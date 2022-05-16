@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <body>
+    <!-- BEGIN display html -->
+    <h1>Quasr Javascript Demo</h1>
+    <button id="btnLogin">Login</button>
+    <hr />
+    <strong>ID Token</strong>
+    <div id="result_id_token"></div>
+    <hr />
+    <strong>ID Token Payload</strong>
+    <div id="result_payload"></div>
+    <hr />
+    <strong>Access Token</strong>
+    <div id="result_access_token"></div>
+    <hr />
+    <!-- END display html-->
+
+    <script type="module">
+    // dependencies
+    import IdTokenVerifier from 'https://cdn.skypack.dev/idtoken-verifier';
+    import { v4 as uuid } from 'https://cdn.skypack.dev/uuid';
+    import * as pkceChallenge from 'https://cdn.skypack.dev/pkce-challenge';
+
+    // Quasr constants
+    const issuer = 'https://YOUR_QUASR_TENANT.api.quasr.io' // << adjust to your environment
+    const jwks_uri = `${issuer}/jwks`
+    const authorize_endpoint = `${issuer}/oauth2/authorize`
+    const token_endpoint = `${issuer}/oauth2/token`
+    const client_id = 'YOUR_CLIENT_ID'  // << adjust to your environment
+
+    // handle response from redirect
+    if (window.location.search) {
+      var args = new URLSearchParams(window.location.search);
+
+      // id_token
+      var id_token = args.get('id_token');
+      if (id_token) {
+        document.getElementById('result_id_token').innerHTML = id_token;
+
+        let verifier = new IdTokenVerifier({
+          issuer: issuer,
+          audience: client_id,
+          jwksURI: jwks_uri
+        });
+        verifier.verify(id_token, (error, payload) => {
+          if (error) {
+            alert(error);
+            return;
+          }
+          document.getElementById('result_payload').innerHTML = JSON.stringify(payload);
+        });
+      }
+
+      // code
+      var code = args.get('code');
+      if (code) {
+        var xhr = new XMLHttpRequest();
+
+        xhr.onload = function() {
+            var response = xhr.response;
+            var message = xhr.status == 200 ? response.access_token : response.error;
+            document.getElementById("result_access_token").innerHTML = message;
+        };
+        xhr.responseType = 'json';
+        xhr.open("POST", token_endpoint, true);
+        xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+
+        xhr.send(new URLSearchParams({
+            client_id: client_id,
+            code_verifier: window.sessionStorage.getItem('code_verifier'),
+            grant_type: 'authorization_code',
+            redirect_uri: location.origin,
+            code: code
+        }));
+      }
+    }
+
+    // handle click on login button, initiates oauth2 flow
+    document.getElementById('btnLogin').onclick = function() {
+        // pkce
+        const pkce = pkceChallenge.default()
+        window.sessionStorage.setItem('code_verifier', pkce.code_verifier);
+
+        var redirect_uri = location.origin;
+        var args = new URLSearchParams({
+            response_type: "code id_token",
+            client_id: client_id,
+            code_challenge_method: "S256",
+            code_challenge: pkce.code_challenge,
+            scope: 'openid',
+            redirect_uri: redirect_uri
+        });
+        window.location = authorize_endpoint.concat(`?${args}`);
+    }
+    </script>
+  </body>
+</html>
